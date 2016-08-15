@@ -15,7 +15,7 @@ while [ $i -le "$1" ]
     do
     
     nice -n -10 ./PassCrack offline -v -q -g -p 4 \
-    -o Table_$2Mx$5_pt$i.txt -m $2000000 -t $5
+    -o /media/tsaou/144E156E153D44/Users/Leo/Desktop/Tables/Table_$2Mx$5_pt$i.txt -m $2000000 -t $5
     
     i=$(($i+1))
     
@@ -28,10 +28,10 @@ while [ $i -le "$3" ]
     do
     
     nice -n -10 ./PassCrack offline -v -q -g -p 4 \
-    -o Table_$4Mx$5_pt$i.txt -m $4000000 -t $5
+    -o /media/tsaou/144E156E153D44/Users/Leo/Desktop/Tables/Table_$4Mx$5_pt$i.txt -m $4000000 -t $5
     
     i=$(($i+1))
     
     done    
     
-chown -v tsaou:tsaou ./Table*    
+chown -v tsaou:tsaou /media/tsaou/144E156E153D44/Users/Leo/Desktop/Tables/Table*    

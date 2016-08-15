@@ -18,7 +18,7 @@ CC		= gcc
 RM		= rm
 WC		= wc -l
 
-SRC		= main.cpp blake.cpp rainbowfuncts.cpp generate.cpp								
+SRC		= main.cpp blake.cpp rainbowfuncts.cpp generate.cpp	hashmap.cpp							
 OBJ		= $(SRC:.c=.o)
 INC		= blake.hpp
 BIN		= PassCrack
@@ -30,7 +30,7 @@ DBG		= 0
 
 
 ifeq ($(DBG),1)												#Stuff programmer cares about
-	FLAGS	= -W -Wall -Wextra -Wshadow -g -O3 -std=c++11
+	FLAGS	= -W -Wall -Wextra -Wshadow -g -O3
 else														#...but user does not!
 	FLAGS	= -s -w -O3
 endif
@@ -44,7 +44,7 @@ all: $(BIN)													#default rule
 
 
 $(BIN): $(OBJ)												#link object files
-	$(CPP) $(OBJ) $(FLAGS) -o $@  $(LIB)
+	$(CPP) $(OBJ) $(FLAGS) -o $@ -std=c++11 $(LIB)
 
 .c.o :	$(INC)												#compile source files (interfaces dependent)
 	$(CPP) $(FLAGS) -c $<

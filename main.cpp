@@ -11,6 +11,9 @@
 #include <string>
 #include <vector>
 #include <list>
+#include <unordered_map>
+
+
 #include <utility>
 #include <unistd.h>
 
@@ -18,22 +21,27 @@
 
 
 using namespace std;
-typedef list<pair<char[7],char[7]>*> Table_t;
+typedef list< pair<char[7],char[7]>* >  Table_t;
+typedef unordered_map< string,string >  HashTable_t;
 
 																		// Forward declarations to resolve dependancies
 Table_t*	read_table( ifstream& intable );
 void		write_table( Table_t* rainbow,  ofstream& outtable );
 
-void 		red_functs_set1( char* out, const uint8_t *in, int red_by );
-void 		red_functs_set2( char* out, const uint8_t *in, int red_by );
-void 		red_functs_set3( char* out, const uint8_t *in, int red_by );
-void 		red_functs_set4( char* out, const uint8_t *in, int red_by );
-void 		red_functs_set5( char* out, const uint8_t *in, int red_by );
+void    red_functs_set1( char* out, const uint8_t *in, int red_by );
+void	red_functs_set2( char* out, const uint8_t *in, int red_by );
+void	red_functs_set3( char* out, const uint8_t *in, int red_by );
+void	red_functs_set4( char* out, const uint8_t *in, int red_by );
+void	red_functs_set5( char* out, const uint8_t *in, int red_by );
 
-Table_t*	generate_tables(long m, int t, int threads, bool post);
-bool 		follow_chain( uint8_t hash[32], char* startpoint, char* password, int t);
-bool		lookup(char* pwd, Table_t* rainbow, char* startpoint );
-double      success_prob(long m, int t, int l, long long N);
+HashTable_t*    build_hashmap(Table_t* rainbow, float load_factor);
+Table_t*	    generate_tables(long m, int t, int threads, bool post);
+
+double          success_prob(long m,    int t, int l, long  long N);
+bool 		    follow_chain(uint8_t hash[32], char* startpoint, char* password, int t);
+bool		    lookup(char* pwd, Table_t*     rainbow,     char* startpoint );
+bool		    lookup(char* pwd, HashTable_t* rainbow_map, char* startpoint );
+
 
 
 /*********** GLOBAL VARIABLES *************************************************/																	
@@ -59,21 +67,23 @@ void usage(){
 		<<"\tonline/offline     : Choose operation mode (enable/disable reduce-lookup-hash cycles)\n"
 		<<"\t                     Defalut: online mode\n"
 		<<"\t-u                 : Show usage.\n"
+		<<"\t-v                 : Verbose, print extra messages during execution\n"
+		<<"\t                       (used in debugging)\n"
 		<<"\t-c                 : Calculate the success probability.\n"
+		<<"\t-g                 : Use the C++11 robust PRNG in table generation\n"
 		<<"\t-q                 : Only keep chains with unique endpoints.\n"
 		<<"\t                      Post-process table and discard duplicate endpoints\n"
 		<<"\t                      Using this option results in m'<m. Use -Q for consistency\n"
 		<<"\t-Q                 : Like -q, but each chain's uniqueness is evaluated right after creation\n"
 		<<"\t                      using this option guarantees m'=m with an extra time cost.\n"
 		<<"\t                      Option only takes effect if generation is single threaded!\n"
-		<<"\t-g                 : Use the C++11 robust PRNG in table generation\n"
-		<<"\t-v                 : Verbose, print extra messages during execution\n"
-		<<"\t                       (used in debugging)\n"
 		<<"\t-p <thrds>         : Parallelize table generation using <thrds> threads.\n"
 		<<"\t                       If -s is specified only the first thread's chains will be printed\n"
 		<<"\t-r <redfunset>     : Select the set of reduction functions to be used\n"
 		<<"\t                       Default: 3\n"
-		<<"\n"
+		<<"\t-h <load>          : Convert (post-processed) table to hash-map before lookups\n"
+		<<"\t                       Option only meaningfull in online mode\n"
+		<<"\t                       Hashing will result in avg. <load> elements/bucket. \n"		
 		<<"\t-i <intable>       : Pre-computed rainbow table to be imported from file <intable>.\n"
 		<<"\t-o <outtable>      : Export rainbow table for future use, in file <outtable>\n"
 		<<"\t-s <outchain>      : Save 10 first chains in their full-length in file <outchain>.\n"
@@ -103,9 +113,10 @@ int		t=32;															// # of links per chain/reduction functions
 /********** OFFLINE PART **********/	
 	
 	char		c;
-	bool		do_calc=false, online=true, post=false;
+	bool		do_calc=false, online=true, post=false, hashmap=false;
 	int         threads=1, set;
 	char        outchain_file[128];
+	float       hash_load_factor = 100.0;
 
 	for(int i=1; i<argc; i++){
 	    if( !strcmp(argv[i],"offline") ){    
@@ -118,8 +129,8 @@ int		t=32;															// # of links per chain/reduction functions
     else
 	    cout<<"Online mode selected"<<endl; 
 	         	        
-	
-	while ((c = getopt(argc, argv, ":uvcgqQt:i:o:s:m:t:l:p:r:")) != -1) {			// Parsing command line arguments 
+	                
+	while ((c = getopt(argc, argv, ":uvcgqQt:i:o:s:m:l:p:h:r:")) != -1) {			
    		switch(c) {
 			case 'u':
 				usage();
@@ -128,6 +139,15 @@ int		t=32;															// # of links per chain/reduction functions
 				v=true;
 				cout << "Verbose mode enabled" << endl;
         		break;
+        	case 'h':
+    			hashmap=true;
+        		hash_load_factor = atof(optarg);
+    			if(hash_load_factor<=0){
+    				cout << "Please specify an apropriate load factor!" << endl;
+    				usage();
+    				exit(0);
+    			}	    			
+        		break;	
         	case 'c':
 				do_calc = true;
 				break;
@@ -145,8 +165,10 @@ int		t=32;															// # of links per chain/reduction functions
         	case 'i':
     			readtable = true;
     			intable.open(optarg);
-    			if( intable.fail() )
-    				cerr << "Failed to open table input file!" << endl;   
+    			if( intable.fail() ){
+    				cerr << "Failed to open table input file!" << endl; 
+    				exit(1);
+    			}	  
     			if(v) cout << "Rainbow will be imported from file " << optarg << '.' << endl;	
     			break;	
     		case 'o':
@@ -158,8 +180,10 @@ int		t=32;															// # of links per chain/reduction functions
 				    if(ans != 'y') exit(0);
 				}    
 				outtable.open(optarg, ofstream::trunc);				
-    			if( outtable.fail() )
+    			if( outtable.fail() ){
     				cerr << "Failed to open table output file!" << endl;  
+    				exit(1);
+    			}
     			cout << "Opened file " << optarg << " to export the rainbow table." << endl;			
     			break;	
     		case 's':
@@ -271,9 +295,15 @@ int		t=32;															// # of links per chain/reduction functions
 	        exit(0);
 	    }
     }    	         
-	        
+	if(online && hashmap)
+	    cout<<"Table will be converted to a hash-map with a "<<hash_load_factor<<" load factor"<<endl;        
 	
-	
+	if(!online && !savetable){
+	    cout << "Table will be wasted!" << endl;
+	    usage();
+	    exit(0);    
+	}
+	    
 	if( readtable ){
 		rainbow = read_table( intable );
 	}
@@ -329,8 +359,23 @@ int		t=32;															// # of links per chain/reduction functions
 	sigaction( SIGTSTP,&act,NULL );
 	
 	
-	/********** ONLINE PART **********/	
+	/****************************************** ONLINE PART **********************************************************/	
 	
+	HashTable_t* rainbow_map; 
+	if(hashmap){
+	    if(v)   cout << "Converting to hash-map..." << endl;        
+	    rainbow_map = build_hashmap(rainbow, hash_load_factor);
+	    if(v){
+	        cout << setw(6) << setprecision(2) << fixed
+			     << 100.00 << "% complete... Done!" << endl;            // Now print some stats
+	        
+	        cout <<"\t"<<rainbow->size()-rainbow_map->size()
+	             <<" std::hash collisions were encountered. New m="<<rainbow_map->size()<<endl;
+            cout <<"\tThe resulting map has "<<rainbow_map->bucket_count()<<" buckets."<<endl;
+            cout <<"\tThat's a "<< setw(6) << setprecision(2) << fixed 
+                 << rainbow_map->load_factor()<<" load factor!"<< endl;
+        }         
+	}
 	
 	while( online ){													// if something goes wrong, restart with next initial hash don't quit.
 		cout << "Enter password hash:" << endl;
@@ -357,6 +402,8 @@ int		t=32;															// # of links per chain/reduction functions
 		
 
 		int reps = 1;
+		char startpoint[7], candidate_pwd[7];
+        bool found, retrieved;
 		while(reps<=t){												    // "Reduce-Lookup-Hash" cycle 
 			
 			if(v) cout << "Iteration #" << reps << '\r' << flush;		// Re-write on the previous line in screen (to keep only the # changing)
@@ -370,15 +417,19 @@ int		t=32;															// # of links per chain/reduction functions
 			}
 			
 		//	if(v) cout << "Performing lookup in rainbow tables... ";
-			char startpoint[7];
-			bool found = lookup( cur_pwd, rainbow, startpoint);			// Search for the reduced output in chain-Endpoints			
+
+			
+			if(hashmap)                                                 // Search for the reduced output in chain-Endpoints
+			    found = lookup( cur_pwd, rainbow_map, startpoint);	
+			else
+			    found = lookup( cur_pwd, rainbow,     startpoint );    					
+			
 			
 			if( found ){												// But if we made a hit, recreate the chain from its beginning...
-				char candidate_pwd[7];
 				if(v) cout << endl << "Found current password as endpoint after "
 							<< reps << " iterations!" << endl << "The startpoint is " << startpoint << endl;
 				
-				bool retrieved = follow_chain( h, startpoint, candidate_pwd, t);	        
+				retrieved = follow_chain( h, startpoint, candidate_pwd, t);	        
 				if(retrieved)
 				    cout << "CANDIDATE PASSWORD:\n" << candidate_pwd << endl;
 				else

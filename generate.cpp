@@ -154,7 +154,7 @@ Table_t* generate_tables(long m, int t, int threads, bool post){
 		    
 		    do{ 
 		        for(int j=0; j<6; j++){
-			        if(!prng)                                               // Start from a random password
+			        if(!prng)                                           // Start from a random password
 			            passchar = alphabet[ rand() % 64 ];
 			        else
 			            passchar = alphabet[ distr(generator) ];    						
@@ -162,17 +162,17 @@ Table_t* generate_tables(long m, int t, int threads, bool post){
 		        }	
 		
 		        if(savechain && i<10)	outchain << "CHAIN #" << i+1 << endl;
-		        for(int j=1; j<=t-1 ; j++){									// For every link
+		        for(int j=1; j<=t-1 ; j++){								// For every link
 			        if(j==1){
 				        if(savechain && i<10)	outchain << startpoint;
-				        hashfun( cur_h,(uint8_t*)startpoint,6 );			// (1) HASH link's password
-			        }														//  or chain's starting point if it's the first
+				        hashfun( cur_h,(uint8_t*)startpoint,6 );		// (1) HASH link's password
+			        }													//  or chain's starting point if it's the first
 			        else{
 				        if(savechain && i<10)	outchain << cur_pwd;
 				        hashfun( cur_h,(uint8_t*)cur_pwd,6 );															
 			        }
 			
-			        if(savechain && i<10){  								// Update output file if specified to do so 
+			        if(savechain && i<10){  							// Update output file if specified to do so 
 				        outchain << " -> ";
 				        for(int k=0; k<32; k++)
 					        outchain << hex << setw(2) << setfill('0') << (int)cur_h[k] << dec ;
@@ -180,18 +180,18 @@ Table_t* generate_tables(long m, int t, int threads, bool post){
 			        }	
 				
 				
-			        redfun( cur_pwd,cur_h,j );								// (2) REDUCE previously computed hash using the correct red-fun
-		        }															// and start all over again
+			        redfun( cur_pwd,cur_h,j );							// (2) REDUCE previously computed hash using the correct red-fun
+		        }														// and start all over again
 		        if(savechain && i<10)	outchain << cur_pwd << '\n' << endl;
 		
-		        start_end = new pair<char[7],char[7]>();	                // Finally, create start-end pair,
+		        start_end = new pair<char[7],char[7]>();	            // Finally, create start-end pair,
 		        strcpy( start_end -> first, startpoint);
 		        strcpy( start_end -> second,   cur_pwd);
 		        
-		        char startpoint_f[7];                             // dummy arg- won't be used
+		        char startpoint_f[7];                                   // dummy arg- won't be used
 		        
 		        
-		        if(i<5) break;                                   // don't bother looking if table is still too small
+		        if(i<5) break;                                          // don't bother looking if table is still too small
 		        bool found = lookup(start_end->second, rainbow, startpoint_f);
 		        if(!found){
 		            break;

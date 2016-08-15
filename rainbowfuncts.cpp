@@ -98,8 +98,7 @@ void red_functs_set1( char* out, const uint8_t *in, int red_by ){
 
 /*
  * Reduction-functions' set #2.
- *          "Expected maximum output entropy"
- *          "->Noted maximum character entropy, but minimum output entropy"
+ *          "High Kolmogorov Complexity"
  *
  * 1024 original red-funs
  *
@@ -206,7 +205,7 @@ void red_functs_set4( char* out, const uint8_t *in, int red_by ){
  * 
  */
 void red_functs_set5( char* out, const uint8_t *in, int red_by ){				
-    int o_idx, i_idx, ab_idx;
+    int o_idx, i_idx;
     int range_from  = 0;            // inclusive
     int range_to    = 63;
     
@@ -382,7 +381,7 @@ bool follow_chain( uint8_t hash[32], char* startpoint, char* password, int t){
 		if( memcmp(cur_h,hash,sizeof(cur_h))==0 ){
 		    strcpy(password, cur_pwd);	
 		    if(v)
-		        cout<<"After applying red-fun #"<<i-1<<", the hashed"
+		        cout<<"After applying red-fun #"<<i-1<<", the hashed "
 		            <<"output matches the originating one!"<<endl;
 		    return true;    
 		}
