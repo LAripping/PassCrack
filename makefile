@@ -35,7 +35,7 @@ endif
 
 
 	
-.PHONY: all clean count 									#to avoid shadows
+.PHONY: all clean count wipe								#to avoid shadows
 
 
 all: $(BIN)													#default rule
@@ -56,7 +56,7 @@ count:														#other rules
 #	$(RM) $(OBJ) $(BIN) $(SRC) $(ADTS) $(INC) $(ARH) $(AR) 
 
 clean:
-	$(RM) $(OBJ) $(BIN)
+	$(RM) *.o $(BIN)
 
 
 	

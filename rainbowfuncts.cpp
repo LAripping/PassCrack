@@ -88,48 +88,57 @@ int main(int argc, char **argv){
 
 
 
-void my_red_functs_set( char* out, const uint8_t *in, int red_by ){
+
+
+/*
+ * My reduction-functions' set.
+ * Determined by the index "red_by" of the function selected from the set
+ * 6 bytes are chosen from the hash.
+ *
+ * First their msb is unset to match the old 7bit ASCII format.
+ * Then each byte is mapped to a character from the password's alphabet 
+ *
+ * In first rep use redfun #1: takes bytes 0-5
+ *					In second: takes bytes 1-6
+ *		 			In third:  takes bytes 2-7 etc... 
+ * Until 32 is exceeded so mod32 indexing chooses from start again (0,1,2...) 
+ *
+ */
+void my_red_functs_set( char* out, const uint8_t *in, int red_by ){													
+	int 	o_idx=0, i_idx;
+	uint8_t byte, mask;
 	
-	switch( red_by ){										// Select reduction function by #
-		case 1:												// Currently only #1 implemented
-		{													
-			int 	j=0;
-			bool 	repeat=false;
-			uint8_t byte, mask;
-			for(int i=0 ; i<6 ; i++){						// For each byte of the first 6 in the hash (32 in total)									
-				byte = in[i];
-				mask = 0x7f;								// Create byte 01111111 to perform bitwise AND with hash's byte.
-				byte &= mask;								// Do not consider hash-byte's 8th lefmost (msb) bit, unset it!
-				
-								
-				if( ( 0x2f< byte && byte<=0x39 )			// Map them to a specific character in password's alphabet
-				||  ( 0x41<=byte && byte <0x5b ) 
-				||  ( 0x61<=byte && byte <0x7b ) )						
-					out[j] = (char) byte;					// This character is usually the one whose ASCII code equals the byte's value
-				
-				else if((byte>=0x3a && byte<=0x41)  
-					||  (byte>=0x7b && byte<=0x7f) )
-					out[j] = '@';
+	for(int i=0 ; i<6 ; i++){																
+		i_idx = (i + red_by - 1) % 32;						// Select input's byte to map
+		byte  = in[ i_idx ];									
 		
-				else if((byte>=0x00 && byte<=0x2f)
-					||	(byte>=0x5b && byte<=0x60) )
-					out[j] = '!';
-				
-				else										// In case i forgot a case!
-					cerr << "Case not supported!" << (int)byte << endl;	// Control should never come here!
+		mask = 0x7f;										// Create byte 01111111 to perform bitwise AND with hash's byte...
+		byte &= mask;										// To unset hash-byte's 8th lefmost (msb) bit.
+		
 						
-				j++;
+		if( ( 0x2f< byte && byte<=0x39 )					// Map them to a specific character in password's alphabet
+		||  ( 0x41<=byte && byte <0x5b ) 
+		||  ( 0x61<=byte && byte <0x7b ) )						
+			out[o_idx] = (char) byte;							// This character is usually the one whose ASCII code equals the byte's value
+		
+		else if((byte>=0x3a && byte<=0x41)  
+			||  (byte>=0x7b && byte<=0x7f) )
+			out[o_idx] = '@';
+		
+		else if((byte>=0x00 && byte<=0x2f)
+			||	(byte>=0x5b && byte<=0x60) )
+			out[o_idx] = '!';
+															// In case i forgot a case!
+		else												// Control should never come here!
+			cerr << "Case not supported!" << (int)byte << endl;	
 				
-			}
-			out[j] = '\0';									// NULL terminate it to process as C-string
-			break;
-		}
-		default :
-			cout << "Reduction Function #" << red_by << " not yet implemented!";
-			exit(2);	
-	}			
+		o_idx++;
+				
+	}
+	out[o_idx] = '\0';										// NULL terminate it to process as C-string
+				
 	
-//	if(v) cout<< "Hash reduced to \"" << out << "\" in password's domain." << endl;		That's way too verbose!!
+//	if(v) cout<< "Hash reduced to \"" << out << "\" in password's domain." << endl;	
 }
 
 
@@ -178,16 +187,25 @@ bool pass_comparator(const pair<char[7],char[7]>* first, const pair<char[7],char
 
 
 list< pair<char[7],char[7]>* >*	generate_tables(int m, int t){
+	float progress = 0;
 	char	cur_pwd[7];													// Both hash and reduction functions take
 	uint8_t	cur_h[32];													//  preallocated buffers in arguments and fill them.
 	char	passchar;
 	char	startpoint[7];
 	startpoint[6] = '\0';												// Startpoint string is a plain old C-string
 	srand( time(NULL) );	
+	
 																		// Allocate rainbow table structure 
 	list<pair<char[7],char[7]>*>* rainbow = new list<pair<char[7],char[7]>*>();	
+	
+	
+	if( v==true && (m*t>1000) ) 				
+		cout << "Generating tables... (This could take a while!)" << endl; 
+	
 		
-	for(int i=0; i<m ; i++){											// For every chain
+	for(int i=0; i<m ; i++){											// For every chain		
+		progress = (float)i / (float)m;
+		
 		for(int j=0; j<6; j++){
 			passchar = alphabet[ rand() % 64 ];							// Start from a random password
 			startpoint[j] = passchar;
@@ -220,9 +238,15 @@ list< pair<char[7],char[7]>* >*	generate_tables(int m, int t){
 		strcpy( start_end -> first, startpoint);
 		strcpy( start_end -> second,   cur_pwd);																	
 		rainbow -> push_back( start_end );									//  allocate pair dynamically and store pointer in container
-	}
 		
+		if(v) cout << setw(6) << setprecision(2) << fixed
+			 << progress*100 << "% complete..." << '\r' << flush; 
+	}
+	
+	if(v) cout << endl << "Sorting table... " << flush;			
 	rainbow -> sort( pass_comparator );										// And return a sorted table (ASCENDING) , to prepare for binary searches.
+	if(v) cout << "Done!" << endl;
+	
 		
 	return rainbow;
 }	
@@ -327,6 +351,7 @@ bool lookup(char* pwd, list<pair<char[7],char[7]>*>* rainbow, char* startpoint){
 		 
 		if(! strcmp(middle_pair->second,pwd) ){							// If pwd = middle, return results
 			strcpy( startpoint, middle_pair->first);
+			delete dummy_pair;
 			return true;
 		}
 		else if ( pass_comparator(dummy_pair,middle_pair) ){			// If pwd < middle
@@ -345,6 +370,7 @@ bool lookup(char* pwd, list<pair<char[7],char[7]>*>* rainbow, char* startpoint){
 		}
 	}
 	
+	delete dummy_pair;
 	if(! strcmp(middle_pair->second,pwd) ){								// Make one last comparison to decide.
 		strcpy( startpoint, middle_pair->first);
 		return true;
@@ -359,54 +385,32 @@ bool lookup(char* pwd, list<pair<char[7],char[7]>*>* rainbow, char* startpoint){
 
 
 /*
- * "Hash-Compare-Reduce cycle" function to reproduce chain.
+ * "Hash-Reduce cycle" function to reproduce chain.
  *
- * When a hit is found in the rainbow table for the given hash,
- * it repeatedly switches the password back ann forth in the hash-domain
- * untill a hash identical to the original is found OR "t" steps are made.
- *
- * In that case, a candidate password is the one immediately preceding 
- * in the password-domain, and is thus returned in the preallocated 
- * character buffer "password" for the user to try, along with a 
- * "true" boolean return value.
- *
- * If no such match occured after looping "t" times 
- * -that is, the full length of the chain-
- * the hash was a result of a collision.
- * Consinsetly, no candidate password is returned and the caller is notified
- * via the "false" boolean return value.
+ * When a hit is found in the rainbow table's endpoints for the given hash 
+ * after "pos" RLH cycles, this function is called.
  * 
+ * It repeatedly switches the hit-password back and forth in the hash-domain
+ * for a number of "pos-1" times, then a candidate password is the one immediately preceding 
+ * in the password-domain, and is thus returned in the preallocated 
+ * character buffer "password" for the user to try.
  *
  */
-bool follow_chain( char* startpoint, char* password, uint8_t* hash, int t){
+void follow_chain( char* startpoint, char* password, int pos){
 
 	uint8_t	cur_h[32];
 	char	cur_pwd[7];
 
-	
 
-	for(int i=1; i<=t ; i++){												
+	for(int i=1; i<=pos-1 ; i++){												
 		if(i==1)	hashfun( cur_h,(uint8_t*)startpoint,6 );
 		else		hashfun( cur_h,(uint8_t*)cur_pwd,6 );				
 		
-		bool match = true;												
-		for(int j=0; j<32; j++)
-			if( cur_h[j]!=hash[j] ){
-				match=false;
-				break;
-			}
-		
-		if( match ){
-			if(v) cout << "Match found " << i << " steps along the way!" << endl;
-			strcpy(password, cur_pwd);
-			return true;
-		}
-		else{	
-			redfun( cur_pwd,cur_h,1 );
-		}		
-	}	
+		redfun( cur_pwd,cur_h,1 );
+	}
 	
-	return false;	
+	hashfun( cur_h,(uint8_t*)cur_pwd,6 );
+	strcpy(password, cur_pwd);	
 }
 
 

@@ -23,7 +23,7 @@ list< pair<char[7],char[7]>* >*	generate_tables(int m, int t);
 list< pair<char[7],char[7]>* >*	read_table( ifstream& intable );
 void							write_table( list<pair<char[7],char[7]>*>* rainbow,  ofstream& outtable );
 void 							my_red_functs_set( char* out, const uint8_t *in, int red_by );
-bool 							follow_chain( char* startpoint, char* password, uint8_t* hash, int t);
+bool 							follow_chain( char* startpoint, char* password, int pos);
 bool 							pass_comparator(const pair<char[7],char[7]>* first, const pair<char[7],char[7]>* second);	
 bool							lookup(char* pwd, list<pair<char[7],char[7]>*>* rainbow, char* startpoint );
 
@@ -73,7 +73,6 @@ int main(int argc, char** argv){
 int		tables=1;														// # of tables
 int		m=18;															// # of chains per table
 int		t=1000;															// # of links per chain
-int		r=1;															// # of reduction functions	
 	
 	
 	
@@ -124,10 +123,7 @@ int		r=1;															// # of reduction functions
     			cout << "Opened file " << optarg << " to export the full chains." << endl;				
     			break;
     		case 'x':
-    			cout << "How many chains per table?" << endl;
-				cin  >> m;
-				cout << "How many links per chain?" << endl;
-				cin  >> t;
+    			exp = true;
 				break;			
     		case 't':
     			tables = atoi(optarg);
@@ -154,10 +150,17 @@ int		r=1;															// # of reduction functions
 	
 	list<pair<char[7],char[7]>*>*		rainbow;							// Make array in future expansion								
 	
-	if( readtable )
+	if( readtable ){
 		rainbow = read_table( intable );
+	}
 	else	
 	{	
+		if(exp){
+			cout << "How many chains per table?" << endl;
+			cin  >> m;
+			cout << "How many links per chain?" << endl;
+			cin  >> t;
+		}	
 		time_t 		rawstart	= time(NULL);
 		struct tm*	start 		= localtime( &rawstart );
 		int startday  = start->tm_yday;
@@ -184,7 +187,7 @@ int		r=1;															// # of reduction functions
 	
 
 	uint8_t	h[32], cur_h[32]; 											// |Hash| = 256 bits = 32 bytes = 64 hex chars 
-	char 	pwd[7], cur_pwd[7];											// |Valid Password| = 6 chars long + '\0'
+	char 	cur_pwd[7];													// |Valid Password| = 6 chars long + '\0'
 	static	struct sigaction act;
 	
 	act.sa_handler = update_hash;										// Install signal handler for SIGTSTP 	
@@ -216,41 +219,34 @@ int		r=1;															// # of reduction functions
 		
 
 		int reps = 1;
-		while(1){														// "Reduce-Lookup-Hash" cycle !!!INFINITE BY DEFAULT!!!
+		while(1){														// "Reduce-Lookup-Hash" cycle 
 			
-			if(v) cout << "Iteration #" << reps << endl;
+			if(v) cout << "Iteration # " << reps << '\r' << flush;		// Re-write on the previous line in screen (to keep only the # changing)
 			
-			if(cur_h==NULL)												
-				 redfun( cur_pwd,h,1 );									// In the first loop reduce initial password hash
-			else redfun( cur_pwd,cur_h,1 );								// And in later ones reduce previously-computed hash
+			if(cur_h==NULL)												// Reduction Function is different for every "rep"
+				 redfun( cur_pwd,h,reps );								//   In the first loop reduce initial password hash,
+			else redfun( cur_pwd,cur_h,reps );							//   In later ones reduce previously-computed hash
 
 			
-			if(v) cout << "Performing lookup in rainbow tables... ";
+		//	if(v) cout << "Performing lookup in rainbow tables... ";
 			char startpoint[7];
 			bool found = lookup( cur_pwd, rainbow, startpoint);			// Search for the reduced output in chain-Endpoints			
 			
-			if( found ){												// But if we made a hit, unfold the chain from the beginning
+			if( found ){												// But if we made a hit, unfold the chain from the beginning...
 				char candidate_pwd[7];
-				bool no_collision = true;
-				if(v) cout << "Found current password as endpoint!\nThe startpoint is " << startpoint << endl;
-				no_collision = follow_chain( startpoint, candidate_pwd, h, t );
-				if( no_collision ){
-					cout << "CANDIDATE PASSWORD:\n" << candidate_pwd << endl;
-					sleep(2);											// Give the reader some time to copy the password
-				}
-				else{
-					cout << "Chain collision occured!" << endl;	
-				}	
-			
+				if(v) cout << endl << "Found current password as endpoint after "
+							<< reps << " RLH cycles!" << endl << "The startpoint is " << startpoint << endl;
+				
+				follow_chain( startpoint, candidate_pwd, reps );		// ...until t-reps link to get candidate password! 
+				cout << "CANDIDATE PASSWORD:\n" << candidate_pwd << endl;
+				if(v) cout << "Hashing again..." << endl;				// In spite of the result, continue the cycle
 			}
 			
-			if(v) cout << "Hashing again." << endl;						// In spite of the result, continue the cycle
 			hashfun( cur_h,(uint8_t*)cur_pwd,6 );
-			reps++;
-					
+			reps++;		
 
 			if( password_changed ){										// After every iteration check if dbus::GeneratePassSignall was caught
-				cout << "New password generated... " << endl; 
+				cout << endl << "New password generated... " << endl; 
 				password_changed = false;
 				break;
 			}	
