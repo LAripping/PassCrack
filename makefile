@@ -23,6 +23,8 @@ OBJ		= $(SRC:.c=.o)
 INC		= blake.hpp
 BIN		= PassCrack
 
+LIB     = -lpthread -lm
+
 DBG		= 0
 
 
@@ -42,7 +44,7 @@ all: $(BIN)													#default rule
 
 
 $(BIN): $(OBJ)												#link object files
-	$(CPP) $(OBJ) $(FLAGS) -o $@ -std=c++11
+	$(CPP) $(OBJ) $(FLAGS) -o $@ -std=c++11 $(LIB)
 
 .c.o :	$(INC)												#compile source files (interfaces dependent)
 	$(CPP) $(FLAGS) -c $<
