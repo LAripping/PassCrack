@@ -19,6 +19,7 @@ tablemodel.txt, chainmodel.txt | Table and chain demos
 makefile | Build script
 generator-script.bash | A bash script to automate back2back runs for small tables to avoid memory overuse.
 changelog.txt | A diary of major fixes between versions.
+tablemerger.cpp | Just a piece of code to merge small tables together into a big one with unique endpoints.
 
 __NOTE:__ This programm uses modern libraries, part of the C++11 standard, which the compiler used must support.
 
