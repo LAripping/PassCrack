@@ -24,10 +24,11 @@ typedef list<pair<char[7],char[7]>*> Table_t;
 Table_t*	read_table( ifstream& intable );
 void		write_table( Table_t* rainbow,  ofstream& outtable );
 
-
 void 		red_functs_set1( char* out, const uint8_t *in, int red_by );
 void 		red_functs_set2( char* out, const uint8_t *in, int red_by );
 void 		red_functs_set3( char* out, const uint8_t *in, int red_by );
+void 		red_functs_set4( char* out, const uint8_t *in, int red_by );
+void 		red_functs_set5( char* out, const uint8_t *in, int red_by );
 
 Table_t*	generate_tables(long m, int t, int threads, bool post);
 bool 		follow_chain( uint8_t hash[32], char* startpoint, char* password, int t);
@@ -39,7 +40,8 @@ double      success_prob(long m, int t, int l, long long N);
 void (*hashfun)( uint8_t *out, const uint8_t *in, uint64_t inlen )	= blake256_hash;
 void (*redfun) ( char* out, const uint8_t *in, int red_by ) 		= red_functs_set3;
 
-bool			v=false , password_changed=false, savechain=false, savetable=false, readtable=false;
+bool			v=false , password_changed=false, savechain=false, savetable=false, readtable=false, inplace=false;
+bool            prng=false;
 ifstream		intable;
 ofstream		outchain, outtable;
 
@@ -58,7 +60,13 @@ void usage(){
 		<<"\t                     Defalut: online mode\n"
 		<<"\t-u                 : Show usage.\n"
 		<<"\t-c                 : Calculate the success probability.\n"
-		<<"\t-q                 : Only keep chains with unique endpoints (post-generation).\n"
+		<<"\t-q                 : Only keep chains with unique endpoints.\n"
+		<<"\t                      Post-process table and discard duplicate endpoints\n"
+		<<"\t                      Using this option results in m'<m. Use -Q for consistency\n"
+		<<"\t-Q                 : Like -q, but each chain's uniqueness is evaluated right after creation\n"
+		<<"\t                      using this option guarantees m'=m with an extra time cost.\n"
+		<<"\t                      Option only takes effect if generation is single threaded!\n"
+		<<"\t-g                 : Use the C++11 robust PRNG in table generation\n"
 		<<"\t-v                 : Verbose, print extra messages during execution\n"
 		<<"\t                       (used in debugging)\n"
 		<<"\t-p <thrds>         : Parallelize table generation using <thrds> threads.\n"
@@ -71,9 +79,10 @@ void usage(){
 		<<"\t-s <outchain>      : Save 10 first chains in their full-length in file <outchain>.\n"
 		<<"\t                       (used for testing online mode)\n"
 		<<"\n"
-		<<"\t-t <links>         : Explicitly define chain variables M and T\n"
-		<<"\t-m <chains>            for chains-per-table and links-per-chain respectively.\n"
-		<<"\t                       Defaults: m=100, t=32\n"           
+		<<"\t-m <chains>        : Explicitly define chain variables M and T\n"
+		<<"\t-t <links>             for chains-per-table and links-per-chain respectively.\n"
+		<<"\t                       Defaults: m=100, t=32\n"
+		<<""           
 		<<"\t-l <tables>        : Number of tables to be generated\n"
 		<<"\t                       only 1 currently supported." << endl ;
 	return;	
@@ -95,7 +104,7 @@ int		t=32;															// # of links per chain/reduction functions
 	
 	char		c;
 	bool		do_calc=false, online=true, post=false;
-	int         threads=1;
+	int         threads=1, set;
 	char        outchain_file[128];
 
 	for(int i=1; i<argc; i++){
@@ -110,7 +119,7 @@ int		t=32;															// # of links per chain/reduction functions
 	    cout<<"Online mode selected"<<endl; 
 	         	        
 	
-	while ((c = getopt(argc, argv, ":uvcqt:i:o:s:m:t:l:p:r:")) != -1) {			// Parsing command line arguments 
+	while ((c = getopt(argc, argv, ":uvcgqQt:i:o:s:m:t:l:p:r:")) != -1) {			// Parsing command line arguments 
    		switch(c) {
 			case 'u':
 				usage();
@@ -125,8 +134,15 @@ int		t=32;															// # of links per chain/reduction functions
 			case 'q':
 			    post = true;
 			    if(v) cout<<"Chains with common endpoints will be removed " << endl;	
-				break;					
-    		case 'i':
+				break;
+			case 'Q':
+			    inplace = true;
+				break;										
+			case 'g':
+				prng=true;
+				cout << "The sophisticated C++11 PRNG will be used in table generation" << endl;
+        		break;
+        	case 'i':
     			readtable = true;
     			intable.open(optarg);
     			if( intable.fail() )
@@ -135,7 +151,13 @@ int		t=32;															// # of links per chain/reduction functions
     			break;	
     		case 'o':
 				savetable = true;
-				outtable.open(optarg, ofstream::trunc);					// If outtable already exists, discard old contents
+				if( ifstream(optarg) ){
+				    cout << "Output file \" " << optarg << "\" already exists! Overwrite? (y/n): ";
+				    char ans;
+				    cin >> ans;
+				    if(ans != 'y') exit(0);
+				}    
+				outtable.open(optarg, ofstream::trunc);				
     			if( outtable.fail() )
     				cerr << "Failed to open table output file!" << endl;  
     			cout << "Opened file " << optarg << " to export the rainbow table." << endl;			
@@ -144,6 +166,12 @@ int		t=32;															// # of links per chain/reduction functions
 				savechain = true;
 				strncpy(outchain_file, optarg, strlen(optarg));
 				outchain_file[strlen(optarg)] = '\0';    
+				if( ifstream(optarg) ){
+				    cout << "Output file \" " << optarg << "\" already exists! Overwrite? (y/n): ";
+				    char ans;
+				    cin >> ans;
+				    if(ans != 'y') exit(0);
+				} 				
 				outchain.open(optarg, ofstream::trunc);					// If outchain already exists, discard old contents 
     			if( outchain.fail() )
     				cerr << "Failed to open chain output file!" << endl;  
@@ -184,16 +212,19 @@ int		t=32;															// # of links per chain/reduction functions
     			cout<<"Table generation will be parallelized using "<<threads<<" threads"<<endl;	
     			break;
     		case 'r':
-    			if(atoi(optarg)!=1 && atoi(optarg)!=2 && atoi(optarg)!=3){
-    			    cout << "Only 3 sets of reduction functions currently supported!" << endl;
-    				usage();
-    				exit(0);
-    			}else if( atoi(optarg)==1 ){
-    			    redfun = red_functs_set1;
-    			}else if( atoi(optarg)==3 ){
-    			    redfun = red_functs_set3;
-    			}    
-    			cout << "Reduction function set #"<<optarg<<" selected"<<endl;
+    		    set = atoi(optarg); 	    			    
+    			switch(set){
+    			    case 1: redfun = red_functs_set1; break;
+    			    case 2: redfun = red_functs_set2; break;
+    			    case 3: redfun = red_functs_set3; break;
+    			    case 4: redfun = red_functs_set4; break; 
+      			    case 5: redfun = red_functs_set5; break; 
+    			    default:
+    			        cout << "Available reduction-function sets: 1-5!" << endl;
+    				    usage();
+    				    exit(0); 			    
+    			}   
+    			cout << "Reduction function set #"<<set<<" selected"<<endl;
     			break;
     	    case ':':
         		cerr << '-' << optopt << "without argument" << endl;
@@ -226,6 +257,22 @@ int		t=32;															// # of links per chain/reduction functions
 	if(threads>1 && readtable){
         cout << "No point specifying thread number if table is read!" << endl;  
 	} 	
+	if(inplace){        // If inplace uniqueness checking is requested
+	    if(threads!=1){
+	        cout << "-Q option only available in single-threaded table generation!" << endl;
+	        usage();
+	        exit(0);
+	    }else{
+	        cout << "Chain uniqueness will be evaluated right after creation!" << endl;
+        }
+        if(savechain){
+	        cout << "-Q option can't be combined with -s!" << endl;
+	        usage();
+	        exit(0);
+	    }
+    }    	         
+	        
+	
 	
 	if( readtable ){
 		rainbow = read_table( intable );
@@ -312,7 +359,7 @@ int		t=32;															// # of links per chain/reduction functions
 		int reps = 1;
 		while(reps<=t){												    // "Reduce-Lookup-Hash" cycle 
 			
-			if(v) cout << "Iteration # " << reps << '\r' << flush;		// Re-write on the previous line in screen (to keep only the # changing)
+			if(v) cout << "Iteration #" << reps << '\r' << flush;		// Re-write on the previous line in screen (to keep only the # changing)
 
             int i=t-reps;                                              
             redfun(cur_pwd, h, i);                                      // In the first loop reduce initial password hash,       

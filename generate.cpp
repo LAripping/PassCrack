@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <pthread.h>
 
+#include <random>
 
 #include "blake.hpp"
 
@@ -25,9 +26,9 @@ extern char alphabet[64];
 
 extern void (*hashfun)( uint8_t *out, const uint8_t *in, uint64_t inlen );
 extern void (*redfun) ( char* out, const uint8_t *in, int red_by );
+bool		lookup(char* pwd, Table_t* rainbow, char* startpoint );
 
-
-extern bool		v, savechain;
+extern bool		v, savechain, prng, inplace;
 extern ofstream	outchain;
 
 
@@ -121,13 +122,24 @@ void* worker_thread( void* args );
 pthread_mutex_t  vector_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 Table_t* generate_tables(long m, int t, int threads, bool post){
+	long discarded = 0;
 	float progress = 0;
 	char	cur_pwd[7];													// Both hash and reduction functions take
 	uint8_t	cur_h[32];													//  preallocated buffers in arguments and fill them.
 	char	passchar;
 	char	startpoint[7];
 	startpoint[6] = '\0';												// Startpoint string is a plain old C-string
-	srand( time(NULL) );	
+	
+	
+	if(!prng)                                                           // Initialize whatever PRNG is used 
+	    srand( time(NULL) );	
+	// else   
+	    int range_from  = 0;
+	    int range_to    = 63;
+	    default_random_engine           generator( (unsigned int)time(0) );
+	    uniform_int_distribution<int>   distr(range_from, range_to);   
+	
+	        
 	
 																		// Allocate rainbow table structure 
 	Table_t* rainbow = new Table_t();	
@@ -138,44 +150,66 @@ Table_t* generate_tables(long m, int t, int threads, bool post){
 	if(threads==1){	                                
 	    for(long i=0; i<m ; i++){										// For every chain		
 		    progress = (float)i / (float)m;
+		    pair<char[7],char[7]>* start_end;
+		    
+		    do{ 
+		        for(int j=0; j<6; j++){
+			        if(!prng)                                               // Start from a random password
+			            passchar = alphabet[ rand() % 64 ];
+			        else
+			            passchar = alphabet[ distr(generator) ];    						
+			        startpoint[j] = passchar;
+		        }	
 		
-		    for(int j=0; j<6; j++){
-			    passchar = alphabet[ rand() % 64 ];						// Start from a random password
-			    startpoint[j] = passchar;
-		    }	
-		
-		    if(savechain && i<10)	outchain << "CHAIN #" << i+1 << endl;
-		    for(int j=1; j<=t-1 ; j++){									// For every link
-			    if(j==1){
-				    if(savechain && i<10)	outchain << startpoint;
-				    hashfun( cur_h,(uint8_t*)startpoint,6 );			// (1) HASH link's password
-			    }														//  or chain's starting point if it's the first
-			    else{
-				    if(savechain && i<10)	outchain << cur_pwd;
-				    hashfun( cur_h,(uint8_t*)cur_pwd,6 );															
-			    }
+		        if(savechain && i<10)	outchain << "CHAIN #" << i+1 << endl;
+		        for(int j=1; j<=t-1 ; j++){									// For every link
+			        if(j==1){
+				        if(savechain && i<10)	outchain << startpoint;
+				        hashfun( cur_h,(uint8_t*)startpoint,6 );			// (1) HASH link's password
+			        }														//  or chain's starting point if it's the first
+			        else{
+				        if(savechain && i<10)	outchain << cur_pwd;
+				        hashfun( cur_h,(uint8_t*)cur_pwd,6 );															
+			        }
 			
-			    if(savechain && i<10){  								// Update output file if specified to do so 
-				    outchain << " -> ";
-				    for(int k=0; k<32; k++)
-					    outchain << hex << setw(2) << setfill('0') << (int)cur_h[k] << dec ;
-				    outchain << " -> " << endl;
-			    }	
+			        if(savechain && i<10){  								// Update output file if specified to do so 
+				        outchain << " -> ";
+				        for(int k=0; k<32; k++)
+					        outchain << hex << setw(2) << setfill('0') << (int)cur_h[k] << dec ;
+				        outchain << " -> " << endl;
+			        }	
 				
 				
-			    redfun( cur_pwd,cur_h,j );								// (2) REDUCE previously computed hash using the correct red-fun
-		    }															// and start all over again
-		    if(savechain && i<10)	outchain << cur_pwd << '\n' << endl;
+			        redfun( cur_pwd,cur_h,j );								// (2) REDUCE previously computed hash using the correct red-fun
+		        }															// and start all over again
+		        if(savechain && i<10)	outchain << cur_pwd << '\n' << endl;
 		
-		    pair<char[7],char[7]>* start_end = new pair<char[7],char[7]>();	// Finally, create start-end pair,
-		    strcpy( start_end -> first, startpoint);
-		    strcpy( start_end -> second,   cur_pwd);																	
+		        start_end = new pair<char[7],char[7]>();	                // Finally, create start-end pair,
+		        strcpy( start_end -> first, startpoint);
+		        strcpy( start_end -> second,   cur_pwd);
+		        
+		        char startpoint_f[7];                             // dummy arg- won't be used
+		        
+		        
+		        if(i<5) break;                                   // don't bother looking if table is still too small
+		        bool found = lookup(start_end->second, rainbow, startpoint_f);
+		        if(!found){
+		            break;
+		        }else{
+		            discarded++;
+		            delete start_end;																	
+		        }		        
+		    }while(inplace);
+		    
 		    rainbow -> push_back( start_end );							//  allocate pair dynamically and store pointer in container
 		
 		    if(v) cout << setw(6) << setprecision(2) << fixed
 			     << progress*100 << "% complete..." << '\r' << flush; 
 	    }
 	    if(v) cout<<"100.00% complete... Done!" << endl;
+        if(v && inplace){
+            cout<<discarded<<" chains were discarded in the process" << endl;
+        }	    
 	}else{                                               ////////////////////// MULTI-THREADED ALGORITHM
 	    long i, sub_m;
 	    int id;
@@ -210,7 +244,7 @@ Table_t* generate_tables(long m, int t, int threads, bool post){
     	                                                                
     	                                                                // After all workers are spawned...
 	    do{                                                             // ...the main thread every once in a while...
-	        sleep(2);
+	        sleep(10);
 	         
 	        pthread_mutex_lock(&vector_mutex);
 	            long overall_progress=0;
@@ -253,7 +287,7 @@ Table_t* generate_tables(long m, int t, int threads, bool post){
 	rainbow -> sort( pass_comparator );									// And return a sorted table (ASCENDING) , to prepare for binary searches.
 	if(v) cout << "Done!" << endl;
 	
-	if(post){
+	if(post && !inplace){
 	    if(v) cout << "Post processing table... " << flush;			
 	    rainbow -> unique( pass_predicate );							// Remove any chains having non-unique endpoints
 	    long perfect = rainbow->size();
@@ -282,8 +316,7 @@ void* worker_thread( void* args ){
     delete _args;                                                       // Then frees the struct
     
     
-    float my_prog =0.0, my_last_prog = 0.0;
-   	pthread_t rseed = pthread_self();                                   // Thread unsafe "rand" replaced here with "rand_r"
+    float my_prog =0.0, my_last_prog = 0.0;                                  
     char	cur_pwd[7];													
 	uint8_t	cur_h[32];													
 	char	passchar;
@@ -292,12 +325,26 @@ void* worker_thread( void* args ){
 	
 	bool savechain_m = savechain && (id==0);                            // Chain printing statements will only 
 	                                                                    // be executed for the first thread
+	
+	
+                                                           
+	pthread_t rseed = pthread_self(); 	                                // Initialize whatever PRNG is used
+	int range_from  = 0;
+	int range_to    = 63;
+	default_random_engine           generator( (unsigned int)time(0)+pthread_self() );
+	uniform_int_distribution<int>   distr(range_from, range_to); 
+	
 	for(long i=0 ; i<my_subm ; i++){
 	    my_prog = (float)i / (float)my_subm;
 		
 		for(int j=0; j<6; j++){
-		    int rand_idx = rand_r( (unsigned int*)&rseed );
-		    passchar = alphabet[ rand_idx % 64 ];						// Start from a random password
+		    int rand_idx;
+		    if(!prng){
+		        rand_idx = rand_r( (unsigned int*)&rseed );
+		        passchar = alphabet[ rand_idx % 64 ];
+		    }else{
+		        passchar = alphabet[ distr(generator) ];    
+		    }						
 		    startpoint[j] = passchar;
 		}	
 		

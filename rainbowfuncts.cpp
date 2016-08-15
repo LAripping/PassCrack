@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstring>
 
+#include <random>
+
 
 #include "blake.hpp"
 
@@ -160,6 +162,65 @@ void red_functs_set3( char* out, const uint8_t *in, int red_by ){
 }
 		
 		
+		
+		
+/*
+ * Reduction-functions' set #4.
+ *          "PRNG - Uniformly distributed indices "
+ *
+ * Seeding uniform_distribution generator with red_by index
+ * for the indices of the hash's bytes to be selected. 
+ * Then these bytes' values are mapped with a mod64 to a 
+ * character in the passwords alphabet
+ *
+ *  WARNING: Much slower to implement, but offers greater uniformity
+ *
+ */
+void red_functs_set4( char* out, const uint8_t *in, int red_by ){				
+    int o_idx, i_idx, ab_idx;
+    int range_from  = 0;            // inclusive
+    int range_to    = 31;
+    default_random_engine           generator(red_by); // seeding happens here
+    uniform_int_distribution<int>   distr(range_from, range_to);    
+    
+    for(o_idx = 0; o_idx<6; o_idx++ ){
+        i_idx = distr(generator);
+ 
+        ab_idx = in[i_idx]%64;
+        out[o_idx] = alphabet[ ab_idx ];    
+        i_idx = (i_idx + 9) % 32;
+    }
+   	out[o_idx] = '\0';									// NULL terminate it to process as C-string                     
+}
+		
+	
+	
+	
+/*
+ * Reduction-functions' set #5.
+ *          "PRNG - Uniformly distributed passchars "
+ *
+ * Red-by with a "twist" determines the byte of the hash
+ * that will be selected to seed the PRNG.
+ * This in turn generates 6 chars uniformly distributed in the alphabet
+ * 
+ */
+void red_functs_set5( char* out, const uint8_t *in, int red_by ){				
+    int o_idx, i_idx, ab_idx;
+    int range_from  = 0;            // inclusive
+    int range_to    = 63;
+    
+    i_idx = (red_by+9) % 32;
+        
+    default_random_engine           generator( in[i_idx] ); // seeding happens here
+    uniform_int_distribution<int>   distr(range_from, range_to);    
+    
+    for(o_idx = 0; o_idx<6; o_idx++ ){
+        out[o_idx] = alphabet[ distr(generator) ];    
+    }
+   	out[o_idx] = '\0';									// NULL terminate it to process as C-string                     
+}	
+		
 
 
 void write_table( Table_t* rainbow,  ofstream& outtable ){
@@ -198,8 +259,8 @@ Table_t* read_table( ifstream& intable ){
 		cout << "Table imported succesfully\nIt now contains: " 
 			<< rainbow->size() << " chains" << endl;
 	
-		ofstream out("whatwasread.txt", ofstream::trunc);
-		write_table(rainbow,out);
+//		ofstream out("whatwasread.txt", ofstream::trunc);
+//		write_table(rainbow,out);
 	}	
 	
 	return rainbow;
@@ -224,12 +285,14 @@ Table_t* read_table( ifstream& intable ){
 bool lookup(char* pwd, Table_t* rainbow, char* startpoint){	
 																		// Implicitly assigning ceil[ size/2 ] 
 	int	i;
-	int	base_index		= 1;
-	int	middle_index	= rainbow->size() / 2;
-	int	top_index		= rainbow->size();		
-	Table_t::iterator it= rainbow->begin();	
+	int	base_index		          = 1;
+	int	middle_index	          = rainbow->size() / 2;
+	int	top_index		          = rainbow->size();		
+	Table_t::iterator         it  = rainbow->begin();
+	Table_t::reverse_iterator tit = rainbow->rbegin();	
 
 	pair<char[7],char[7]>					*middle_pair;				// Pivot-pointer pair
+	pair<char[7],char[7]>                   *base_pair = *it, *top_pair = *tit;
 	pair<char[7],char[7]>					*dummy_pair = new pair<char[7],char[7]>();
 	strcpy( dummy_pair->second, pwd );									
 																		// Create dummy pair, with only an endpoint
@@ -252,6 +315,12 @@ bool lookup(char* pwd, Table_t* rainbow, char* startpoint){
 		}
 	*/			
 																		
+		if( pass_comparator(dummy_pair,base_pair)                       // Skip the whole process in the rare case
+		 || pass_comparator(top_pair,dummy_pair)  ){                    // that pwd > top OR pwd < base
+		     delete dummy_pair;
+		     return false;
+		}     
+		 
 		 
 		if(! strcmp(middle_pair->second,pwd) ){							// If pwd = middle, return results
 			strcpy( startpoint, middle_pair->first);
@@ -275,7 +344,7 @@ bool lookup(char* pwd, Table_t* rainbow, char* startpoint){
 	}
 	
 	delete dummy_pair;
-	if(! strcmp(middle_pair->second,pwd) ){								// Make one last comparison to decide.
+	if(! strcmp(middle_pair->second,pwd) ){								// Make one last comparisonfor single point case
 		strcpy( startpoint, middle_pair->first);
 		return true;
 	}
@@ -306,7 +375,7 @@ bool follow_chain( uint8_t hash[32], char* startpoint, char* password, int t){
 	char	cur_pwd[7];
 
 
-	for(int i=1; i<t+10 ; i++){												
+	for(int i=1; i<t+2 ; i++){												
 		if(i==1)	hashfun( cur_h,(uint8_t*)startpoint,6 );
 		else		hashfun( cur_h,(uint8_t*)cur_pwd,6 );				
 		
