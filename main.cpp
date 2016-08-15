@@ -83,7 +83,7 @@ int		t=1000;															// # of links per chain
 	bool		exp=false;
 
 	
-	while ((c = getopt(argc, argv, ":uvf:t:i:o:xs:")) != -1) {					// Parsing command line arguments 
+	while ((c = getopt(argc, argv, ":uvf:t:i:o:xs:")) != -1) {			// Parsing command line arguments 
    		switch(c) {
 			case 'u':
 				usage();
@@ -98,7 +98,7 @@ int		t=1000;															// # of links per chain
    		 	   		usage();
    		 	   		exit(0);
    		 	   	}	
-   		// 	   	hashfun = & otherhashfun;									   In future expansion
+   		// 	   	hashfun = & otherhashfun;								In future expansion
    		 	    cout << "Using hash function "<< optarg << endl ;
     		    break;
     		case 'i':
@@ -110,14 +110,14 @@ int		t=1000;															// # of links per chain
     			break;	
     		case 'o':
 				savetable = true;
-				outtable.open(optarg, ofstream::trunc);						// If outtable already exists, discard old contents
+				outtable.open(optarg, ofstream::trunc);					// If outtable already exists, discard old contents
     			if( outtable.fail() )
     				cerr << "Failed to open table output file!" << endl;  
     			cout << "Opened file " << optarg << " to export the rainbow table." << endl;			
     			break;	
     		case 's':
 				savechain = true;
-				outchain.open(optarg, ofstream::trunc);						// If outchain already exists, discard old contents 
+				outchain.open(optarg, ofstream::trunc);					// If outchain already exists, discard old contents 
     			if( outchain.fail() )
     				cerr << "Failed to open chain output file!" << endl;  
     			cout << "Opened file " << optarg << " to export the full chains." << endl;				
@@ -148,7 +148,7 @@ int		t=1000;															// # of links per chain
 	
 	
 	
-	list<pair<char[7],char[7]>*>*		rainbow;							// Make array in future expansion								
+	list<pair<char[7],char[7]>*>*		rainbow;						// Make array in future expansion								
 	
 	if( readtable ){
 		rainbow = read_table( intable );
@@ -168,7 +168,7 @@ int		t=1000;															// # of links per chain
 		int startmin  = start->tm_min;
 		int startsec  = start->tm_sec;
 	
-		rainbow = generate_tables(m, t);									// Create the tables, and time the process
+		rainbow = generate_tables(m, t);								// Create the tables, and time the process
 	
 		time_t 		rawend 		= time(NULL);
 		struct tm*	end			= localtime( &rawend );
@@ -176,10 +176,29 @@ int		t=1000;															// # of links per chain
 		int endhour = end->tm_hour;
 		int endmin  = end->tm_min;
 		int endsec  = end->tm_sec;	
+		
+		int diffday = endday-startday;									// Deal with the carries in subtractions
+		int diffhour= endhour-starthour;
+		if( diffhour<0 ){
+			diffday--;
+			diffhour = 24 + diffhour;
+		}
 			
+		int diffmin = endmin-startmin;									// (This could be made very simple by just
+		if( diffmin<0 ){												//  keeping seconds and performing DIVs and MODS..)
+			diffhour--;
+			diffmin = 60 + diffmin;
+		}	
+		
+		int diffsec = endsec-startsec;
+		if( diffsec<0 ){
+			diffmin--;
+			diffsec = 60 + diffsec;
+		}	 
+		
 		if(v) cout << "Tables generated succesfully in\n\t " 
-				<< endday-startday << " days " 	  << endhour-starthour << " hours "
-				<< endmin-startmin << " minutes " << endsec-startsec   << " seconds." << endl;
+				<< diffday << " days " 	  << diffhour << " hours "
+				<< diffmin << " minutes " << diffsec   << " seconds." << endl;
 		
 		if(savetable)	write_table( rainbow, outtable );
 	}		
