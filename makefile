@@ -18,7 +18,7 @@ CC		= gcc
 RM		= rm
 WC		= wc -l
 
-SRC		= main.cpp blake.cpp rainbowfuncts.cpp								
+SRC		= main.cpp blake.cpp rainbowfuncts.cpp generate.cpp								
 OBJ		= $(SRC:.c=.o)
 INC		= blake.hpp
 BIN		= PassCrack

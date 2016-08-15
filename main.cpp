@@ -21,19 +21,23 @@ using namespace std;
 typedef list<pair<char[7],char[7]>*> Table_t;
 
 																		// Forward declarations to resolve dependancies
-Table_t*	generate_tables(long m, int t, int threads);
 Table_t*	read_table( ifstream& intable );
 void		write_table( Table_t* rainbow,  ofstream& outtable );
-void 		my_red_functs_set( char* out, const uint8_t *in, int red_by );
+
+
+void 		red_functs_set1( char* out, const uint8_t *in, int red_by );
+void 		red_functs_set2( char* out, const uint8_t *in, int red_by );
+void 		red_functs_set3( char* out, const uint8_t *in, int red_by );
+
+Table_t*	generate_tables(long m, int t, int threads, bool post);
 bool 		follow_chain( uint8_t hash[32], char* startpoint, char* password, int t);
-bool 		pass_comparator(const pair<char[7],char[7]>* first, const pair<char[7],char[7]>* second);	
 bool		lookup(char* pwd, Table_t* rainbow, char* startpoint );
 double      success_prob(long m, int t, int l, long long N);
 
 
 /*********** GLOBAL VARIABLES *************************************************/																	
 void (*hashfun)( uint8_t *out, const uint8_t *in, uint64_t inlen )	= blake256_hash;
-void (*redfun) ( char* out, const uint8_t *in, int red_by ) 		= my_red_functs_set;
+void (*redfun) ( char* out, const uint8_t *in, int red_by ) 		= red_functs_set3;
 
 bool			v=false , password_changed=false, savechain=false, savetable=false, readtable=false;
 ifstream		intable;
@@ -54,10 +58,13 @@ void usage(){
 		<<"\t                     Defalut: online mode\n"
 		<<"\t-u                 : Show usage.\n"
 		<<"\t-c                 : Calculate the success probability.\n"
+		<<"\t-q                 : Only keep chains with unique endpoints (post-generation).\n"
 		<<"\t-v                 : Verbose, print extra messages during execution\n"
 		<<"\t                       (used in debugging)\n"
 		<<"\t-p <thrds>         : Parallelize table generation using <thrds> threads.\n"
 		<<"\t                       If -s is specified only the first thread's chains will be printed\n"
+		<<"\t-r <redfunset>     : Select the set of reduction functions to be used\n"
+		<<"\t                       Default: 3\n"
 		<<"\n"
 		<<"\t-i <intable>       : Pre-computed rainbow table to be imported from file <intable>.\n"
 		<<"\t-o <outtable>      : Export rainbow table for future use, in file <outtable>\n"
@@ -87,7 +94,7 @@ int		t=32;															// # of links per chain/reduction functions
 /********** OFFLINE PART **********/	
 	
 	char		c;
-	bool		do_calc=false, online=true;
+	bool		do_calc=false, online=true, post=false;
 	int         threads=1;
 	char        outchain_file[128];
 
@@ -103,7 +110,7 @@ int		t=32;															// # of links per chain/reduction functions
 	    cout<<"Online mode selected"<<endl; 
 	         	        
 	
-	while ((c = getopt(argc, argv, ":uvcx:t:i:o:s:m:t:l:p:")) != -1) {			// Parsing command line arguments 
+	while ((c = getopt(argc, argv, ":uvcqt:i:o:s:m:t:l:p:r:")) != -1) {			// Parsing command line arguments 
    		switch(c) {
 			case 'u':
 				usage();
@@ -114,7 +121,11 @@ int		t=32;															// # of links per chain/reduction functions
         		break;
         	case 'c':
 				do_calc = true;
-				break;	
+				break;
+			case 'q':
+			    post = true;
+			    if(v) cout<<"Chains with common endpoints will be removed " << endl;	
+				break;					
     		case 'i':
     			readtable = true;
     			intable.open(optarg);
@@ -172,6 +183,18 @@ int		t=32;															// # of links per chain/reduction functions
     			}		
     			cout<<"Table generation will be parallelized using "<<threads<<" threads"<<endl;	
     			break;
+    		case 'r':
+    			if(atoi(optarg)!=1 && atoi(optarg)!=2 && atoi(optarg)!=3){
+    			    cout << "Only 3 sets of reduction functions currently supported!" << endl;
+    				usage();
+    				exit(0);
+    			}else if( atoi(optarg)==1 ){
+    			    redfun = red_functs_set1;
+    			}else if( atoi(optarg)==3 ){
+    			    redfun = red_functs_set3;
+    			}    
+    			cout << "Reduction function set #"<<optarg<<" selected"<<endl;
+    			break;
     	    case ':':
         		cerr << '-' << optopt << "without argument" << endl;
         		usage();
@@ -215,7 +238,7 @@ int		t=32;															// # of links per chain/reduction functions
 		int startmin  = start->tm_min;
 		int startsec  = start->tm_sec;
 	
-		rainbow = generate_tables(m, t, threads);						// Create the tables, and time the process
+		rainbow = generate_tables(m, t, threads, post);					// Create the tables, and time the process
 	
 		time_t 		rawend 		= time(NULL);
 		struct tm*	end			= localtime( &rawend );
@@ -243,10 +266,11 @@ int		t=32;															// # of links per chain/reduction functions
 			diffsec = 60 + diffsec;
 		}	 
 		
-		if(v) cout << "Tables generated succesfully in\n\t " 
+		if(v) cout << "Tables generated/sorted"
+		        << (post?"/filtered":"") <<" succesfully in\n\t " 
 				<< diffday << " days " 	  << diffhour << " hours "
 				<< diffmin << " minutes " << diffsec   << " seconds." << endl;
-		
+				
 		if(savetable)	write_table( rainbow, outtable );
 	}		   
 

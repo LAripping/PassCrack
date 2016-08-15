@@ -1,6 +1,15 @@
-/****************************** 	 A FEW TESTERS	 	 ********************************/
+/****************************** 	 A FEW TESTERS	 	 ********************************
+    
+    This file contains a few compile-able and succesfully 
+    executed functions to thoroughly test the operations of
+    the other files, edit and use according to your needs! 
+    
+    NOTE: This file is not included in the makefile
+          compilation/linking targets 
 
-/*	// Reduction Function Tester  
+******************************* 	 THAT WAS ALL!	 	 ********************************/
+
+	// Reduction Function Tester  
 int main(int argc, char **argv){												
 	char 	*h_hexchar = argv[1];							// Initial (64-char) Hash given as single argument
 	uint8_t	h[32];
@@ -16,10 +25,10 @@ int main(int argc, char **argv){
 	char pwd[7];
 	my_red_functs_set( pwd,h,1 );
 }
-*/
 
 
-/*	// Lookup/ReadTable/WriteTable Function Tester  
+
+	// Lookup/ReadTable/WriteTable Function Tester  
 	
 list< pair<char[7],char[7]>* >*	read_table( ifstream& intable );
 bool							lookup(char* pwd, list<pair<char[7],char[7]>*>* rainbow, char* startpoint );
@@ -49,7 +58,7 @@ int main(int argc, char **argv){
 	if(res) cout << startpoint << endl;
 	else	cout << "not found" << endl;
 	
-} */
+}
 
-/****************************** 	 THAT WAS ALL!	 	 ********************************/
+
 
