@@ -119,8 +119,8 @@ void my_red_functs_set( char* out, const uint8_t *in, int red_by ){
 		if( ( 0x2f< byte && byte<=0x39 )					// Map them to a specific character in password's alphabet
 		||  ( 0x41<=byte && byte <0x5b ) 
 		||  ( 0x61<=byte && byte <0x7b ) )						
-			out[o_idx] = (char) byte;							// This character is usually the one whose ASCII code equals the byte's value
-		
+			out[o_idx] = (char) byte;						// This character is usually the one whose ASCII code 
+		                                                    // equals the byte's value
 		else if((byte>=0x3a && byte<=0x41)  
 			||  (byte>=0x7b && byte<=0x7f) )
 			out[o_idx] = '@';
