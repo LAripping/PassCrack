@@ -1,0 +1,9 @@
+TABLE 1
+passwd -> thl4@5
+abcdef -> 35rnH9
+...
+aaaaaa -> 67gh!!
+
+TABLE 2
+111111 -> viYF34
+...
